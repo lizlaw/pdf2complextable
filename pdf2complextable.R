@@ -24,41 +24,59 @@
 # is left as an exercise for the reader :)"
 # well, thanks... 
 
-# so here we go...
+# so here we go...the basic principle is to clip the text to the table (remove titles, etc), then 
+# identify the columns and rows, using whatever cues you might have in your data, then 
+# to string together the text in those blocks and reconstruct the table.
 
 # libraries and files ---------------------------------------------------------
-library(pdftools)
-library(tidyverse)
+  
+  library(pdftools)
+  library(tidyverse)
 
 # data is open access paper https://doi.org/10.1371/journal.pone.0189268
-pdf_file <- "Data/mallinger et al 2017 plos one.pdf"
+
+  pdf_file <- "Data/mallinger et al 2017 plos one.pdf"
 
 # extract data ----------------------------------------------------------------
+# pdftools::pdf_data() pulls out each page of text as a tibble with x,y locations of each text element
 
-# test extraction:
+# test extraction using the pdf_text() function which processes it into a contiguous block of text:
 # txt <- pdf_text(pdf_file)
 # cat(txt[8])  
 # seems to be good at pulling out the items, promising!
-# so likely can proceed without other processing.
+# so likely can proceed without other processing. If it didn't, there are a number of processes noted in the
+# links above to pre-process the image before converting.
 
-dta <- pdf_data(pdf_file)
+  dta <- pdf_data(pdf_file)
 
 # identify (each) section with the table of interest, and compile into a list of tables, 
-# arrange so that the data are in rows by columns (y,x), add a rowid
-df <- dta[8:13] %>% 
-  map(., ~ .x %>% arrange(y,x) %>% rowid_to_column())
+# preprocess:
+# arrange so that the data are in rows by columns (y,x), THIS IS IMPORTANT (we rely on it later)
+# add a rowid (of the df), and a line number id (we can do this because text is usually linear across the page) 
+  
+  preprocess_p2df <- function(x, line = TRUE){ 
+    x <- x %>% 
+      arrange(y,x) %>% 
+      rowid_to_column() 
+    if(line) x <- x %>% 
+      mutate(lineid = as.numeric(as.factor(y)))
+    return(x)
+    }
+
+  df <- dta[8:13] %>% 
+    map(., preprocess_p2df)
 
 # for(i in seq_along(df)){
 #   df[[i]] <- df[[i]] %>% add_column(setid = i)
 # }
 
 # clean the table sections --------------------------------------------------------
-# identify start and end points (by manually finding them), 
+# identify start and end points (by manually finding cues for this in the table), 
 # then clip each section to these, and combine to one table
 
-#' Clip a section to the table itself
+#' Clip a section to the table itself, based on a start and end function
 #' takes a table section, and rules for clipping the rows to remove excess text.
-#' note the start and end rules likely nees to be specified manually based on visualisation of the original table
+#' note the start and end rules likely need to be specified manually based on visualisation of the original table
 #' 
 #' x the data frame
 #' startrule a function (of x) which defines the start of the rowids that need to be kept
@@ -71,6 +89,9 @@ df <- dta[8:13] %>%
       filter(rowid >= sb & rowid <= eb)
   }
 
+# in our example, we can identify specific (typically unique) words in every table that 
+# indicate start and end positions (we can toggle with extra pointers)
+
   df[[1]] <- df[[1]] %>% clip_section(startrule = function(x) {which(x$text == "Reference")},
                                       endrule = function(x) {which(x$text == "(Continued)") -1})
 
@@ -81,19 +102,52 @@ df <- dta[8:13] %>%
   
   df[[6]] <- df[[6]] %>% clip_section(startrule = function(x) {which(x$text == "Reference")},
                            endrule = function(x) {which(x$text == "1") -1})
-  
+
+# alternatives here might be to identify the line numbers that are the start and end of each table 
 
 # identify the likely columns ---------------------------------------------------------
 ## this is challenging in this case, because there is different formatting for each column
-## we know that we have 9 columns. we can manually specify the breaks by examining these.
-i <- 6
-table(df[[i]]$x)
-hist(df[[i]]$x, breaks = 1:max(df[[i]]$x))
+  
+## we know that we have 9 columns. we can manually specify the breaks by examining these, seperately or together
+  
+  plot_xlocs <- function(x, out = "plot"){
+    if(class(x)[1] == "list") x <- bind_rows(x)
+    .x <- x$x
+    if(out == "plot") return(hist(.x, breaks = 1:max(.x)))  else return(table(.x)) 
+  }
+  
+  plot_xlocs(df[[6]])
+  plot_xlocs(df)
+  
+  xbreaks.manual <- c(0, 80, 140, 220, 240, 300, 390, 460, 530, 555)  
+  
+# alternatively, we could at least semi automate this by finding a row that has the most left justified items.
+# for our data, this is the 11th line (of the first page) for cols 1:8, and the 7th line for column 9.
+  
+# get xlocs (or text) from a lineid
+  get_xlocs_fromline <- function(x, .lineid, .selection = "all", out = "xloc"){
+    outx <- x %>% filter(lineid == .lineid)
+    if (.selection[1] == "all") .selection <- 1:nrow(outx)
+    outx <- outx %>% .[.selection, ]
+    if(out == "xloc") return(outx %>% pull(x)) else return(outx %>% pull(text))
+  }
 
-xbreaks <- c(0, 80, 140, 220, 240, 300, 390, 460, 530, 555)  
+# check if we have the right lines  
+  get_xlocs_fromline(df[[1]], 11, out = "text")
+  get_xlocs_fromline(df[[1]], 7, out = "text")
 
-df[1:6] <- df[1:6] %>% 
-  map(., function(.df) .df %>% mutate(xcol = cut(x, breaks = xbreaks) %>% as.numeric()))
+# get xlocs, and convert to xbreaks by bounding, and shifting
+  shift <- 2
+  xbreaks.fromline <- c(get_xlocs_fromline(df[[1]], 11, c(1,4,5,6,7,9,11,12)),
+                        get_xlocs_fromline(df[[1]], 7, 14) 
+                        )
+  maxx <- df %>% bind_rows() %>% pull(x) %>% max
+  xbreaks.fromline <- c(0, xbreaks.fromline[-1] -shift, maxx + shift)
+  
+# cut into columns:  
+  xbreaks <- xbreaks.fromline
+  df[1:6] <- df[1:6] %>% 
+    map(., function(.df) .df %>% mutate(xcol = cut(x, breaks = xbreaks) %>% as.numeric()))
 
 # if the heading boxes were always aligned with the edge (which they are not in this case) AND capitalised
 # another approach might be to identify column breaks by 
