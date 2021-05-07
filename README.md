@@ -7,3 +7,5 @@ I'll add to it when possible, but it isn't my highest priority.
 
 Hope you find it useful. 
 If you do, please be nice and try to cite all the R packages (or at the very least, the key ones contributed by plebs) you use in the main text of every manuscript you submit :)
+
+...update 7th May 2021: added in a more complex example and updated some of the functions. The original file (pdf2complextable.R) is NOT updated with these, only the version with sourced functions (pdf2complextable_example_script_sourcing_functions.R and the accompanying pdf2complextable_functions.R). Have fun!

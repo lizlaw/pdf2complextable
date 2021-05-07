@@ -28,12 +28,14 @@
 # identify the columns and rows, using whatever cues you might have in your data, then 
 # to string together the text in those blocks and reconstruct the table.
 
+## update 7th May 2021: added in a more complex example and updated some of the functions. This file (pdf2complextable.R) is NOT updated with these, only the version with sourced functions (pdf2complextable_example_script_sourcing_functions.R and the accompanying pdf2complextable_functions.R).
+
 # libraries and files ---------------------------------------------------------
   
   library(pdftools)
   library(tidyverse)
 
-# data is open access paper https://doi.org/10.1371/journal.pone.0189268
+# data in this case is an open access paper https://doi.org/10.1371/journal.pone.0189268
 
   pdf_file <- "Data/mallinger et al 2017 plos one.pdf"
 
